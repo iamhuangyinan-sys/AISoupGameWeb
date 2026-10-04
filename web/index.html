@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI 海龟汤</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f2f3f5;
+    --card: #ffffff;
+    --line: #e4e7ec;
+    --line-soft: #eef0f3;
+    --fg: #16181d;
+    --dim: #6b7280;
+    --faint: #9aa1ac;
+    --yes: #17a34a;
+    --no: #dc2626;
+    --both: #b45309;
+    --irr: #6b7280;
+    --abstain: #7c3aed;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; padding: 16px 20px;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 15px; color: var(--fg); background: var(--bg);
+    overflow: hidden;   /* 整页不滚 —— 滚动只发生在右栏问答区里 */
+  }
+  .page {
+    max-width: 1180px; margin: 0 auto; height: 100%;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  header { display: flex; align-items: center; gap: 10px; flex: none; }
+  .spacer { flex: 1; }
+  select, button.ghost, a.ghost, .chk {
+    background: var(--card); color: inherit; border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 11px; font-size: 13px;
+  }
+  a.ghost { text-decoration: none; display: inline-flex; align-items: center; }
+  select, button.ghost, a.ghost { cursor: pointer; }
+  button.ghost:hover:not(:disabled), a.ghost:hover { border-color: #c8cdd6; }
+  button.ghost:disabled { opacity: .5; cursor: default; }
+  .chk { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 11px; }
+  .chk input { margin: 0; }
+
+  main {
+    flex: 1 1 auto; min-height: 0;   /* 这两行是让 #turns 能内部滚动的关键 */
+    display: grid; grid-template-columns: 340px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .panel {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 18px;
+  }
+
+  /* 左栏：汤面 / 汤底，固定在视口里不跟着问答滚 */
+  /* 左栏固定不动，内容超长时自己滚 */
+  .left { overflow-y: auto; }
+  .left h2 { font-size: 11px; letter-spacing: .08em; color: var(--faint); font-weight: 600; margin: 0 0 8px; }
+  .soup-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; }
+  #surface { line-height: 1.85; font-size: 15px; white-space: pre-wrap; }
+  #truthBlock {
+    margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line);
+  }
+  #truth { line-height: 1.85; font-size: 14px; color: #4b4231; white-space: pre-wrap; }
+  .left-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  /* 两个按钮等宽等高 —— 主次靠底色区分，不靠尺寸 */
+  .left-actions button { width: 100%; padding: 11px 20px; font-size: 14px; font-weight: 600; }
+
+  dialog {
+    border: 1px solid var(--line); border-radius: 12px; padding: 22px;
+    background: var(--card); color: var(--fg); width: min(560px, 92vw);
+    box-shadow: 0 12px 40px rgba(22, 24, 29, .18);
+  }
+  dialog::backdrop { background: rgba(22, 24, 29, .32); }
+  dialog h3 { margin: 0 0 6px; font-size: 16px; }
+  .dlg-sub { margin: 0 0 14px; font-size: 13px; color: var(--dim); line-height: 1.65; }
+  dialog textarea {
+    width: 100%; padding: 11px 13px; border-radius: 7px; font-size: 14px;
+    border: 1px solid var(--line); background: var(--card); color: inherit;
+    font-family: inherit; line-height: 1.7; resize: vertical;
+  }
+  dialog textarea:focus { outline: none; border-color: #7b93c9; }
+  .dlg-row { display: flex; gap: 8px; margin-top: 14px; }
+  .solve-ok, .solve-no, .solve-bad {
+    margin-top: 14px; padding: 11px 13px; border-radius: 7px;
+    font-size: 13px; line-height: 1.75;
+  }
+  .solve-ok { background: #eaf7ef; border: 1px solid #bfe3cd; color: #14663a; }
+  .solve-no { background: #fdf6e3; border: 1px solid #f0e0b8; color: #8a6d1f; }
+  .solve-bad { background: #fdeceb; border: 1px solid #f5c9c5; color: #a8291f; }
+
+  /* 右栏：问答历史 + 固定在底部的输入区 */
+  .right { min-height: 0; display: flex; flex-direction: column; padding: 0; }
+  #turns {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    padding: 18px; display: flex; flex-direction: column; gap: 18px;
+  }
+  .empty { color: var(--faint); font-size: 13px; }
+
+  .turn { border-bottom: 1px solid var(--line-soft); padding-bottom: 16px; }
+  .turn:last-child { border-bottom: none; padding-bottom: 0; }
+  .q { font-size: 14px; color: var(--dim); line-height: 1.6; margin-bottom: 6px; }
+  .a-row { display: flex; align-items: baseline; gap: 10px; }
+  .a { font-size: 22px; font-weight: 700; letter-spacing: .02em; }
+  .a.yes { color: var(--yes); }
+  .a.no { color: var(--no); }
+  .a.both { color: var(--both); }
+  .a.irrelevant { color: var(--irr); }
+  .a.abstain { color: var(--abstain); }
+  .a.pending { font-size: 15px; font-weight: 400; color: var(--faint); }
+  .a.error { font-size: 15px; font-weight: 400; color: var(--no); }
+  .conf { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .dev {
+    margin-top: 8px; padding: 7px 9px; border-radius: 6px;
+    background: #f7f8fa; border: 1px solid var(--line-soft);
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+    color: var(--dim); line-height: 1.7; word-break: break-all;
+  }
+
+  .composer { border-top: 1px solid var(--line); padding: 14px 18px 16px; }
+  .row { display: flex; gap: 8px; }
+  input[type=text] {
+    flex: 1; padding: 11px 13px; border-radius: 7px; font-size: 15px;
+    border: 1px solid var(--line); background: var(--card); color: inherit;
+  }
+  input[type=text]:focus { outline: none; border-color: #7b93c9; }
+  input[type=text]:disabled { background: #f7f8fa; }
+  button.primary {
+    padding: 11px 20px; border-radius: 7px; border: 1px solid #24406f;
+    background: #2f4f8f; color: #fff; cursor: pointer; font-size: 14px; font-weight: 600;
+  }
+  button.primary:hover:not(:disabled) { background: #395fa8; }
+  button.primary:disabled { opacity: .45; cursor: not-allowed; }
+  .hint-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-top: 8px;
+  }
+  .hint { font-size: 12px; color: var(--faint); }
+  /* 「支持 / 语法 ?」—— 气泡是纯 CSS，不引库也不占 JS。
+     配色一律走上面的 token，跟卡片同色，别在这里另起一套。 */
+  .syntax {
+    position: relative; display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; color: var(--faint); white-space: nowrap;
+  }
+  .syntax code, .syntax-tip code {
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+    background: var(--line-soft); padding: 1px 5px; border-radius: 4px; color: var(--dim);
+  }
+  .qmark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%; flex: none;
+    /* padding-top 是**视觉**居中：? 的墨迹只占基线上方（无降部），
+       按 em 盒居中会显得偏高约 1px。 */
+    padding: 2px 0 0;
+    border: 1px solid var(--line); background: var(--card); color: var(--faint);
+    font-size: 11px; font-family: inherit; line-height: 1; cursor: help;
+  }
+  .qmark:hover, .qmark:focus { border-color: var(--faint); color: var(--dim); outline: none; }
+  /* ⚠️ 类名不能叫 .tip —— 进度提示条用的是 .banner.tip，同名会把
+     opacity/visibility: hidden 一起套到提示条上，提示就再也显示不出来了
+     （踩过一次：.tip 的优先级低，但 opacity/visibility 只有它有）。 */
+  .syntax-tip {
+    position: absolute; right: -10px; bottom: calc(100% + 8px); z-index: 20;
+    /* right: -10px 是对着「提问」按钮让出来的：气泡压在那个蓝按钮上时，
+       右下圆角和按钮的圆角（7px）错不开，会漏出一小条蓝色。
+       往右挪 10px 让气泡的圆角整个落到按钮右侧的浅色底上，就不漏了。 */
+    width: 300px; padding: 11px 13px; border-radius: 8px;
+    background: var(--card); color: var(--fg); font-size: 12px; line-height: 1.9;
+    border: 1px solid var(--line); text-align: center;
+    box-shadow: 0 6px 20px rgba(22, 24, 29, .10);
+    opacity: 0; visibility: hidden; transition: opacity .12s;
+  }
+  .syntax-tip b { font-weight: 600; color: var(--fg); }
+  .syntax:hover .syntax-tip, .syntax:focus-within .syntax-tip { opacity: 1; visibility: visible; }
+
+  .banner { padding: 11px 14px; border-radius: 7px; font-size: 13px; }
+  .banner.tip { background: #eef4ff; border: 1px solid #cddffb; color: #2c4a7c; line-height: 1.7; }
+  .tip-head { display: flex; align-items: flex-start; gap: 8px; }
+  .tip-label { flex: 1; font-size: 11px; color: #6f88b3; letter-spacing: .04em; }
+  .tip-close {
+    background: none; border: none; padding: 0 2px; margin: -2px 0 0;
+    font-size: 13px; line-height: 1; color: #6f88b3; cursor: pointer;
+  }
+  .tip-close:hover { color: #2c4a7c; }
+  .tip-text { margin-top: 4px; }
+
+  /* 右栏顶部的工具栏（标记筛选） */
+  .turns-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 18px; border-bottom: 1px solid var(--line);
+  }
+  button.mini { padding: 5px 10px; font-size: 12px; }
+  button.mini.on { background: #fdf3d8; border-color: #e8d49a; color: #8a6d1f; }
+
+  .q-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+  .q-row .q { flex: 1; margin-bottom: 0; }
+  .icon {
+    background: none; border: none; padding: 0 2px; margin: 0;
+    font-size: 14px; line-height: 1.3; color: var(--faint); cursor: pointer;
+  }
+  .icon:hover { color: #4b7bec; }
+  .icon.ok { color: var(--yes); }
+  /* 复制图标用内联 SVG —— 不赌字体里有没有 ⧉ 这种冷门字形。
+     display:block 去掉行内基线留白，再靠 margin-top 跟 ✎ / ☆ 对齐（见下面注释）。 */
+  .icon svg { display: block; margin-top: 3px; }
+  .q-edit {
+    flex: 1; padding: 6px 9px; border-radius: 6px; font-size: 14px;
+    border: 1px solid #7b93c9; background: var(--card); color: inherit;
+    font-family: inherit;
+  }
+  .q-edit:focus { outline: none; }
+  .star {
+    background: none; border: none; padding: 0 2px; margin: 0;
+    font-size: 15px; line-height: 1.3; color: var(--faint); cursor: pointer;
+  }
+  .star:hover, .star.on { color: #d19a1f; }
+  .turn.marked { border-left: 3px solid #e8c86a; padding-left: 12px; }
+
+  .banner.warn { background: #fdf6e3; border: 1px solid #f0e0b8; color: #8a6d1f; }
+  .banner.bad { background: #fdeceb; border: 1px solid #f5c9c5; color: #a8291f; }
+
+  /* 窄屏：改成单列堆叠，这时必须放开整页滚动，否则下半部分会被截断 */
+  @media (max-width: 840px) {
+    body { height: auto; overflow: auto; }
+    .page { height: auto; }
+    main { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
+    .left { overflow: visible; }
+    .right { height: auto; }
+    #turns { max-height: 60vh; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <a class="ghost" id="libraryLink" href="/library">← 返回题库</a>
+    <span class="spacer"></span>
+    <span id="settingsHost"></span>
+    <label class="chk"><input type="checkbox" id="devMode" /> 开发模式</label>
+    <button class="ghost" id="newGame">重置</button>
+  </header>
+
+  <div id="banners"></div>
+
+  <main>
+    <aside class="panel left">
+      <div class="soup-title" id="soupTitle"></div>
+      <h2>汤面</h2>
+      <div id="surface"></div>
+      <div id="truthBlock" hidden>
+        <h2>汤底</h2>
+        <div id="truth"></div>
+      </div>
+      <div class="left-actions">
+        <button class="primary" id="solveBtn" disabled>揭示真相</button>
+        <button class="ghost" id="hintBtn" disabled>给我一点提示</button>
+        <button class="ghost" id="reveal" disabled>揭晓汤底</button>
+        <button class="ghost" id="playedBtn" hidden>玩过了</button>
+      </div>
+    </aside>
+
+    <section class="panel right">
+      <div class="turns-head">
+        <button class="ghost mini" id="onlyMarked">只看标记 <span id="markCount">0</span></button>
+      </div>
+      <div id="turns"><span class="empty">还没有提问。想到什么就问什么 —— 只能问能用「是 / 不是」回答的问题。</span></div>
+      <div class="composer">
+        <div class="row">
+          <input type="text" id="q" placeholder="问一个能用「是 / 不是」回答的问题…" autocomplete="off" disabled />
+          <button class="primary" id="ask" disabled>提问</button>
+        </div>
+        <div class="hint-row">
+          <span class="hint" id="hint">回车即可提问</span>
+          <span class="syntax">
+            支持 <code>/</code> 语法
+            <button type="button" class="qmark" id="syntaxHelp" aria-label="什么是 / 语法">?</button>
+            <span class="syntax-tip" role="tooltip">
+              在候选答案之间打 <code>/</code>，一次问一个选择题<br />
+              例：<code>他是自杀/被杀</code><br />
+              → 主持人回 <b>自杀</b>、<b>被杀</b> 或 <b>都不是</b><br />
+              最多 4 个候选
+            </span>
+          </span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="solveDialog">
+  <h3>揭示真相</h3>
+  <p class="dlg-sub">用你自己的话写下这件事的真相。关键因果说对就算通关。</p>
+  <textarea id="guess" rows="7" placeholder="我觉得真相是……"></textarea>
+  <div class="dlg-row">
+    <span class="spacer"></span>
+    <button class="ghost" id="solveCancel">取消</button>
+    <button class="primary" id="solveSubmit">提交</button>
+  </div>
+  <div id="solveResult"></div>
+</dialog>
+
+<script src="/store.js"></script>
+<script>
+const CLS = { yes:"yes", no:"no", both:"both", irrelevant:"irrelevant", abstain:"abstain" };
+const ZH  = { yes:"是", no:"不是", both:"是也不是", irrelevant:"不重要", abstain:"不确定" };
+
+// --- 本地进度（localStorage）---
+// 单机自用，不做服务端存储：刷新后能接着玩、列表里能看出哪条玩过了，就够了。
+// 读写和 id 迁移都在 web/store.js 里（题库页也用它，逻辑只留一份）。
+// 唯一要小心的是**别把汤底写进浏览器** —— 只有玩家已经看过答案（通关或揭晓）才落盘。
+let store = loadStore();
+const saveStore = () => saveStoreData(store);
+
+function progressFor(soupId) {
+  return (store.soups || {})[soupId] || null;
+}
+
+let gameId = null;
+let currentSoupId = null;
+let turns = [];
+// 本局是否已结束。
+// ⚠️ 以前分「已通关 / 已揭晓 / 玩过了」三种，现在**统一成一种** —— 对玩家来说
+// 这三件事的后续完全一样：汤底已经看到了、不能再提问、想重玩点「重置」。
+// 分开只会让界面到处是分支，换来的信息玩家其实用不上。
+let done = false;
+let devMode = false;
+let onlyMarked = false; // 只看标记过的问题
+let editingIndex = null; // 正在 inline 编辑第几条
+let lastTip = null;      // 最近一次提示 {hint, progress, asked}
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+
+function banner(kind, text) {
+  $("banners").innerHTML = text ? `<div class="banner ${kind}">${esc(text)}</div>` : "";
+}
+
+// --- 渲染 ---
+// 回答只要一个词（后端已给），这里只管上色 + 置信度。
+// 「是也不是」和「不确定」都不是模型的直接判断（前者由 Δ 派生、后者是弃权），
+// 在它们旁边挂一个置信度只会误导，所以不显示。
+const NO_CONFIDENCE = new Set(["both", "abstain"]);
+
+// 复制图标用内联 SVG —— 不赌字体里有没有 ⧉ 这种冷门字形。
+// 定义成常量：turnHTML 和「复制后的还原」共用一份，否则连点两次会把 ✓ 永久留在按钮上
+// （第二次读到的 original 已经是 ✓ 了）。
+const COPY_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+             <rect x="5.6" y="5.6" width="8.4" height="8.4" rx="1.7"
+                   fill="none" stroke="currentColor" stroke-width="1.3" />
+             <path d="M10.4 3.4H3.7A1.7 1.7 0 0 0 2 5.1v6.8"
+                   fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+           </svg>`;
+
+function turnHTML(t, i) {
+  const cls = t.kind === "verdict" ? (CLS[t.verdict] || "") : t.kind;
+  const p = t.probabilities || {};
+  const vals = Object.values(p);
+  const conf = vals.length && t.kind === "verdict" && !NO_CONFIDENCE.has(t.verdict)
+    ? Math.max(...vals)
+    : null;
+
+  const confHTML = conf === null ? "" : `<span class="conf">置信 ${Math.round(conf * 100)}%</span>`;
+
+  let dev = "";
+  if (devMode && t.kind === "verdict") {
+    const bits = [];
+    if (t.choice) {
+      // 选择题：候选 + 每个候选的概率 + 命中的那个
+      const prob = t.choice.probabilities || {};
+      const shown = (t.choice.options || []).map((opt, k) => {
+        const key = `c${k + 1}`;
+        const hit = t.choice.picked === key ? "←" : "";
+        return `${opt}${(prob[key] ?? 0).toFixed(2)}${hit}`;
+      });
+      shown.push(`none${(prob.none ?? 0).toFixed(2)}${t.choice.picked === "none" ? "←" : ""}`);
+      bits.push(`选择 ${shown.join(" ")}`, `选项数 ${t.choice.options?.length ?? 0}`);
+    } else {
+      bits.push(
+        `是${p.yes ?? "-"} 不是${p.no ?? "-"} 不重要${p.irrelevant ?? "-"}`,
+        `Δ${Math.abs((p.yes ?? 0) - (p.no ?? 0)).toFixed(2)}`
+      );
+    }
+    bits.push(`${t.latency_ms}ms`);
+    if (t.flags?.length) bits.push(t.flags.join(" "));
+    if (t.second) {
+      const sv = t.second.verdict;
+      bits.push(
+        `复核 ${ZH[sv] ?? sv}@${(t.second.confidence ?? 0).toFixed(2)} → ${t.second.outcome}`
+        + (t.primary_verdict ? `（原判 ${ZH[t.primary_verdict] ?? t.primary_verdict}）` : "")
+      );
+    }
+    dev = `<div class="dev">${esc(bits.join("　·　"))}</div>`;
+  }
+
+  // 局末（通关/揭晓/玩过了）就不给编辑了 —— 留着 ✎ 却点了没反应，看着像坏了。
+  // 局末就不给编辑了 —— 留着 ✎ 却点了没反应，看着像坏了
+  const canEdit = !done;
+
+  const head = i === editingIndex
+    ? `<div class="q-row">
+         <input class="q-edit" data-i="${i}" value="${esc(t.question)}" />
+         <button class="icon" data-act="save" data-i="${i}" title="重新提问">✓</button>
+         <button class="icon" data-act="cancel" data-i="${i}" title="取消编辑">✕</button>
+       </div>`
+    : `<div class="q-row">
+         <div class="q">${esc(t.question)}</div>
+         <button class="icon" data-act="copy" data-i="${i}" title="复制这个问题"
+                 aria-label="复制这个问题">${COPY_ICON}</button>
+         ${canEdit ? `<button class="icon" data-act="edit" data-i="${i}" title="编辑这个问题">✎</button>` : ""}
+         <button class="star${t.marked ? " on" : ""}" data-i="${i}"
+                 title="${t.marked ? "取消标记" : "标记为关键问题"}">${t.marked ? "★" : "☆"}</button>
+       </div>`;
+
+  return `<div class="turn${t.marked ? " marked" : ""}" data-i="${i}">
+    ${head}
+    <div class="a-row"><span class="a ${cls}">${esc(t.reply)}</span>${confHTML}</div>
+    ${dev}
+  </div>`;
+}
+
+function updateMarkBar() {
+  $("markCount").textContent = turns.filter((t) => t.marked).length;
+  $("onlyMarked").classList.toggle("on", onlyMarked);
+}
+
+function updateHintBtn() {
+  $("hintBtn").disabled = !gameId || done || !turns.length;
+}
+
+// 局末只留**一个**按钮。
+// 三个操作（揭示真相 / 给我一点提示 / 揭晓汤底）到这时都已经没有意义了，
+// 并排挂两个「玩过的」只会互相打架。所以藏起前两个，让「揭晓汤底」那个位置
+// 变成状态显示 —— 它本来就是管「本局到此为止」的那一个。
+// 「玩过了」只在局中当入口（点它就结束本局），任何情况下都不显示状态。
+function updateEndLabels() {
+  $("solveBtn").hidden = done;
+  $("hintBtn").hidden = done;
+  $("playedBtn").hidden = done;
+  $("playedBtn").textContent = "玩过了";
+  $("reveal").textContent = done ? "玩过的" : "揭晓汤底";
+  $("reveal").disabled = done;
+}
+
+// 换汤走题库页面 —— 那边能筛选、搜索、看玩过没有，比一个下拉框有用得多。
+
+// 把当前这局的问答和状态写进本地 —— 刷新、关标签页都不丢。
+function saveProgress() {
+  if (!currentSoupId) return;
+  if (!store.soups) store.soups = {};
+  store.soups[currentSoupId] = {
+    turns: turns.map((t) => ({
+      no: t.no, question: t.question, reply: t.reply, kind: t.kind,
+      verdict: t.verdict, probabilities: t.probabilities,
+      latency_ms: t.latency_ms, flags: t.flags,
+      primary_verdict: t.primary_verdict, second: t.second,
+      choice: t.choice,
+      marked: !!t.marked,
+    })),
+    // ⚠️ 老数据里可能是 "solved" / "revealed" / "played"，读的时候一律当「已结束」
+    // （见 newGame），所以这里统一写 "done" 就够，不需要迁移脚本。
+    finished: done ? "done" : null,
+    truth: done ? ($("truth").textContent || "") : "",
+    // 提示也留着 —— 不然刷新一次提示就没了，玩家得再花一次调用重问
+    tip: lastTip,
+  };
+  saveStore();
+}
+
+// --- 编辑已问的问题 ---
+// 打字打错了、问错方向了，就地改完重发。重发会**顶替**原来那一问（后端也照这个处理），
+// 不会在历史里留下那个错问题 —— 否则后面生成的提示会被它带偏。
+function startEdit(i) {
+  if (done || !turns[i]) return;
+  editingIndex = i;
+  renderTurns();
+  const input = $("turns").querySelector(`.q-edit[data-i="${i}"]`);
+  if (input) { input.focus(); input.select(); }
+}
+
+function cancelEdit() {
+  editingIndex = null;
+  renderTurns();
+}
+
+// --- 复制问题 ---
+// 「刚才那问是怎么问的来着」—— 想照着再问一次（尤其是选择题，语法容易打歪）。
+// ⚠️ 复制完只改这一个按钮，不重画列表：重画会把滚动条弹回底部（和点星标同一个坑）。
+function legacyCopy(text) {
+  // http://127.0.0.1 算安全上下文，但不保证一定用 localhost 打开（局域网 IP 就不是），
+  // 所以留一条 execCommand 的退路 —— 已废弃但还活着。
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+async function copyQuestion(i, btn) {
+  const turn = turns[i];
+  if (!turn || !btn) return;
+
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(turn.question);
+    ok = true;
+  } catch {
+    ok = legacyCopy(turn.question);
+  }
+
+  // 换成一个 ✓ 停一下再变回来 —— 复制这种「按了没反应」的操作必须给反馈。
+  // ⚠️ 还原用的是 COPY_ICON 常量而不是此刻的 innerHTML：连点两次的话，
+  //    第二次读到的已经是 ✓，照着它还原会把 ✓ 永久留在按钮上。
+  btn.innerHTML = ok ? "✓" : "✕";
+  btn.classList.toggle("ok", ok);
+  btn.title = ok ? "已复制" : "复制失败";
+  clearTimeout(btn._copyTimer);
+  btn._copyTimer = setTimeout(() => {
+    btn.innerHTML = COPY_ICON;
+    btn.classList.remove("ok");
+    btn.title = "复制这个问题";
+  }, 1100);
+}
+
+async function saveEdit(i) {
+  const input = $("turns").querySelector(`.q-edit[data-i="${i}"]`);
+  if (!input) return;
+  const question = input.value.trim();
+  const original = turns[i];
+  if (!question) { input.focus(); return; }
+  if (question === original.question) { cancelEdit(); return; }
+
+  const marked = original.marked;
+  editingIndex = null;
+  turns[i] = { question, reply: "…", kind: "pending", latency_ms: 0, marked };
+  renderTurns();
+
+  try {
+    const r = await credFetch(`/api/games/${gameId}/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, replace_at: original.no }),
+    });
+    const data = await r.json();
+    turns[i] = { ...(r.ok ? data : { ...data, kind: "error" }), marked };
+  } catch (e) {
+    turns[i] = { question, reply: errText(e), kind: "error", marked };
+  } finally {
+    renderTurns();
+    saveProgress();
+  }
+}
+
+// --- 进度提示（§4.5）---
+// 提示条一直挂在上面碍眼，所以给一个关闭按钮：关掉就是不要了，
+// 连本地记录一起清掉 —— 刷新后不该自己又冒出来。
+function closeTip() {
+  lastTip = null;
+  banner("", "");
+  saveProgress();
+}
+
+function showTip(text, progress, asked) {
+  const pct = Math.round((progress ?? 0) * 100);
+  $("banners").innerHTML =
+    `<div class="banner tip" id="tipBar">
+       <div class="tip-head">
+         <span class="tip-label">提示 · 已问 ${asked} 次 · 进度约 ${pct}%</span>
+         <button class="tip-close" id="tipClose" title="关闭提示">✕</button>
+       </div>
+       <div class="tip-text">${esc(text)}</div>
+     </div>`;
+}
+
+async function askHint() {
+  if (!gameId || done) return;
+  $("hintBtn").disabled = true;
+  $("hintBtn").textContent = "思考中…";
+  try {
+    // 带上本地历史：刷新后接着玩时，后端这局是新建的，看不见之前的问答，
+    // 不带的话提示会以为玩家一个问题都没问过。
+    const r = await credFetch(`/api/games/${gameId}/hint`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        history: turns
+          .filter((t) => t.kind === "verdict")
+          .map((t) => ({
+            question: t.question,
+            verdict: t.verdict,
+            // 选择题必须带上，否则提示只能看到笼统的「是」，看不到「被杀」
+            choice: t.choice || null,
+          })),
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      banner("bad", d.detail || d.reply || `提示失败（${r.status}）`);
+      return;
+    }
+    // 把上一次的提示一起换掉 —— 玩家再点一次就是想看新的
+    showTip(d.hint, d.progress, d.asked);
+    lastTip = { hint: d.hint, progress: d.progress, asked: d.asked };
+    saveProgress();
+  } catch (e) {
+    banner("bad", errText(e));
+  } finally {
+    $("hintBtn").textContent = "给我一点提示";
+    updateHintBtn();
+  }
+}
+
+// 标记只存在前端内存里 —— 对局本身就是内存态（刷新即重开），没必要落库。
+function toggleMark(i) {
+  const turn = turns[i];
+  if (!turn) return;
+  turn.marked = !turn.marked;
+  updateMarkBar();
+
+  // 取消标记、且正在「只看标记」时，那一条必须从列表里消失，只能重画。
+  if (onlyMarked && !turn.marked) {
+    renderTurns();
+    saveProgress();
+    return;
+  }
+
+  // 其余情况**只改这一条**，不重画整个列表 —— 重画会把滚动条弹回底部，
+  // 而玩家点星标时眼睛正盯着那一条。
+  const el = $("turns").querySelector(`.turn[data-i="${i}"]`);
+  if (!el) {
+    renderTurns();
+    return;
+  }
+  el.classList.toggle("marked", turn.marked);
+  const star = el.querySelector(".star");
+  if (star) {
+    star.classList.toggle("on", turn.marked);
+    star.textContent = turn.marked ? "★" : "☆";
+    star.title = turn.marked ? "取消标记" : "标记为关键问题";
+  }
+  saveProgress();
+}
+
+function renderTurns(scrollToEnd = false) {
+  const box = $("turns");
+  const keepTop = box.scrollTop;
+  updateMarkBar();
+  updateHintBtn();
+
+  if (!turns.length) {
+    box.innerHTML = '<span class="empty">还没有提问。想到什么就问什么 —— 只能问能用「是 / 不是」回答的问题。</span>';
+    return;
+  }
+
+  let items = turns.map((t, i) => ({ t, i }));
+  if (onlyMarked) {
+    // 正在判定的那一问也要留着，否则筛选状态下提问会看不到任何反馈
+    items = items.filter(({ t }) => t.marked || (t.kind === "pending" && t.reply === "…"));
+  }
+  if (!items.length) {
+    box.innerHTML = '<span class="empty">还没有标记任何问题。点问题右边的 ☆ 标记你觉得关键的那一问。</span>';
+    return;
+  }
+  box.innerHTML = items.map(({ t, i }) => turnHTML(t, i)).join("");
+  box.scrollTop = scrollToEnd ? box.scrollHeight : keepTop;
+}
+
+function setBusy(busy) {
+  const off = busy || !gameId || done;
+  $("q").disabled = off;
+  $("ask").disabled = off;
+  $("ask").textContent = busy ? "…" : "提问";
+  $("solveBtn").disabled = off;
+  $("reveal").disabled = off;
+  $("playedBtn").disabled = off;
+  $("hintBtn").disabled = off || !turns.length;
+}
+
+// --- 揭晓 ---
+// 揭晓汤底 / 通关 / 玩过了走的都是这里：把汤底铺到左栏，并把本局封掉。
+function finishGame(truth) {
+  done = true;
+  $("truth").textContent = truth;
+  $("truthBlock").hidden = false;
+  updateEndLabels();
+  $("hint").textContent = "本局已结束，点「重置」可以重玩";
+  $("q").placeholder = "本局已结束";
+  // 局末要重画一次：✎ 得从每一行上撤掉（renderTurns 会保住滚动位置）
+  editingIndex = null;
+  renderTurns();
+  setBusy(false);
+  saveProgress();
+}
+
+async function revealTruth() {
+  if (!gameId || done) return;
+  if (!confirm("揭晓汤底会剧透，而且本局就此结束（不能再提问）。确定要看吗？")) return;
+  $("reveal").disabled = true;
+  try {
+    const r = await credFetch(`/api/games/${gameId}/reveal`, { method: "POST" });
+    const d = await r.json();
+    if (!r.ok) {
+      banner("bad", d.detail || `揭晓失败（${r.status}）`);
+      $("reveal").disabled = false;
+      return;
+    }
+    finishGame(d.truth);
+  } catch (e) {
+    banner("bad", errText(e));
+    $("reveal").disabled = false;
+  }
+}
+
+// --- 玩过了 ---
+// 场景：点开一条汤、看了汤面才想起来这题早玩过。点一下就把本局记成「玩过了」，
+// 顺带把汤底铺出来（既然玩过，也没什么可保密的）。
+// ⚠️ 刻意不给二次确认 —— 这一步不毁掉任何东西（问答历史原样留着），
+//    只是想比「揭晓汤底」少点一次。
+async function markPlayed() {
+  if (!gameId || done) return;
+  $("playedBtn").disabled = true;
+  try {
+    // 复用 reveal 拿汤底：它正好也负责给「本局已结束」盖章（后续 ask 会 409）
+    const r = await credFetch(`/api/games/${gameId}/reveal`, { method: "POST" });
+    const d = await r.json();
+    if (!r.ok) {
+      banner("bad", d.detail || `标记失败（${r.status}）`);
+      $("playedBtn").disabled = false;
+      return;
+    }
+    finishGame(d.truth);
+  } catch (e) {
+    banner("bad", errText(e));
+    $("playedBtn").disabled = false;
+  }
+}
+
+// --- 揭示真相（§4.5b 通关判定）---
+function openSolve() {
+  if (!gameId || done) return;
+  $("guess").value = "";
+  $("solveResult").innerHTML = "";
+  $("solveSubmit").disabled = false;
+  $("solveSubmit").textContent = "提交";
+  $("solveCancel").textContent = "取消";
+  $("solveDialog").showModal();
+  $("guess").focus();
+}
+
+async function submitGuess() {
+  const guess = $("guess").value.trim();
+  if (!guess || !gameId) return;
+  $("solveSubmit").disabled = true;
+  $("solveSubmit").textContent = "判定中…";
+  try {
+    const r = await credFetch(`/api/games/${gameId}/solve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guess }),
+    });
+    const d = await r.json();
+
+    if (!r.ok) {
+      $("solveResult").innerHTML =
+        `<div class="solve-bad">${esc(d.detail || d.reply || `提交失败（${r.status}）`)}</div>`;
+      return;
+    }
+    const pct = Math.round((d.score ?? 0) * 100);
+    if (d.passed) {
+      done = true;
+      $("solveResult").innerHTML =
+        `<div class="solve-ok"><strong>通过</strong>（${pct}%）`
+        + (d.comment ? `　${esc(d.comment)}` : "") + `</div>`;
+      finishGame(d.truth);
+      $("solveSubmit").textContent = "已通关";
+      $("solveCancel").textContent = "关闭";
+      return;
+    }
+    $("solveResult").innerHTML =
+      `<div class="solve-no"><strong>还差一点</strong>（${pct}%）`
+      + (d.missing ? `<div>还差：${esc(d.missing)}</div>` : "")
+      + (d.comment ? `<div>${esc(d.comment)}</div>` : "")
+      + `</div>`;
+    $("guess").focus();
+  } catch (e) {
+    $("solveResult").innerHTML = `<div class="solve-bad">${esc(errText(e))}</div>`;
+  } finally {
+    if (!done) {
+      $("solveSubmit").disabled = false;
+      $("solveSubmit").textContent = "提交";
+    }
+  }
+}
+
+// --- 开新局 ---
+// restore=true（默认）：打开这条汤，带上本地的历史问答与「玩过」状态
+// reset=true          ：明确重玩，先把这条汤的本地记录清掉
+async function newGame(soupId, { restore = true, reset = false } = {}) {
+  setBusy(true);
+  $("playedBtn").hidden = true;   // 局还没开好，先别把它亮出来
+  banner("", "");
+  try {
+    const r = await credFetch("/api/games", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(soupId ? { soup_id: soupId } : {}),
+    });
+    const data = await r.json();
+    if (!r.ok) { banner("bad", data.detail || `开新局失败（${r.status}）`); return; }
+
+    gameId = data.game_id;
+    currentSoupId = data.soup.id;
+    // 记住最后玩的那条，刷新后直接回到它 —— 否则每次都跳回题库第一条，
+    // 看着像「历史全丢了」（其实记录还在，只是开错了汤）。
+    store.lastSoup = currentSoupId;
+    saveStore();
+    $("soupTitle").textContent = data.soup.title;
+    $("surface").textContent = data.soup.surface;
+
+    if (reset && store.soups) {
+      delete store.soups[currentSoupId];
+      saveStore();
+    }
+    const saved = restore && !reset ? progressFor(currentSoupId) : null;
+
+    turns = (saved?.turns || []).map((t) => ({ ...t }));
+    // 上次刷新时还没判完的那一问，恢复后不能一直转圈。
+    // ⚠️ 只认「占位」的 pending（reply 还是「…」）—— 后端对「不是是非题」的提问
+    //    也返回 kind=pending，那种是有回复的，不能改成报错。
+    turns.forEach((t) => {
+      if (t.kind === "pending" && t.reply === "…") {
+        t.kind = "error";
+        t.reply = "（这一问没有判完）";
+      }
+    });
+
+    // ⚠️ `finished` 只要**有值**就算玩过了 —— 老数据里是 "solved" / "revealed" /
+    // "played" 三种，现在统一写 "done"。判真假就够了，不需要迁移老值。
+    done = !!saved?.finished;
+    onlyMarked = false;
+    editingIndex = null;
+
+    // 提示条也恢复（关掉的那次会连记录一起清掉，所以这里能恢复出来就是还没关）
+    lastTip = saved?.tip || null;
+    if (lastTip?.hint) showTip(lastTip.hint, lastTip.progress, lastTip.asked);
+
+    const shownTruth = done && saved?.truth ? saved.truth : "";
+    $("truth").textContent = shownTruth;
+    $("truthBlock").hidden = !shownTruth;
+    updateEndLabels();
+    $("guess").value = "";
+    $("solveResult").innerHTML = "";
+    if ($("solveDialog").open) $("solveDialog").close();
+    $("q").value = "";
+    $("hint").textContent = done ? "这条汤你玩过了，点「重置」重玩" : "回车即可提问";
+    $("q").placeholder = done ? "本局已结束" : "问一个能用「是 / 不是」回答的问题…";
+
+    renderTurns();
+    setBusy(false);
+    $("q").focus();
+  } catch (e) {
+    banner("bad", errText(e));
+  }
+}
+
+// --- 提问 ---
+async function ask() {
+  const q = $("q").value.trim();
+  if (!q || !gameId || done) return;
+  turns.push({ question: q, reply: "…", kind: "pending", latency_ms: 0 });
+  renderTurns(true);
+  $("q").value = "";
+  setBusy(true);
+  try {
+    const r = await credFetch(`/api/games/${gameId}/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q }),
+    });
+    const data = await r.json();
+    const marked = turns[turns.length - 1]?.marked ?? false;
+    turns[turns.length - 1] = {
+      ...(r.ok ? data : { ...data, kind: "error" }),
+      marked,
+    };
+    if (r.ok && data.kind === "pending") banner("warn", data.reply);
+  } catch (e) {
+    turns[turns.length - 1] = { question: q, reply: errText(e), kind: "error", marked: false };
+  } finally {
+    renderTurns(true);
+    setBusy(false);
+    $("q").focus();
+    saveProgress();
+  }
+}
+
+// --- 启动 ---
+// 开哪一条，优先级：网址上的 ?id=..（从题库点进来的）> 上次玩的那条 > 第一条
+function wantedSoupId(soups) {
+  const fromUrl = new URLSearchParams(location.search).get("id");
+  const last = store.lastSoup;
+  for (const candidate of [fromUrl, last]) {
+    if (candidate && soups.some((s) => s.id === candidate)) return candidate;
+  }
+  return soups[0].id;
+}
+
+// 「设置」弹窗：填自己的 API key
+mountSettings($("settingsHost"));
+
+(async function init() {
+  try {
+    const r = await fetch("/api/soups");
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      banner("bad", d.detail || `加载题库失败（${r.status}）`);
+      return;
+    }
+    const { soups } = await r.json();
+    if (!soups?.length) {
+      banner(
+        "warn",
+        "题库是空的。点左上角「返回题库」进去新增一条，或点「导入」粘贴一份纯文本题库"
+        + "（格式见 data/soup.example.txt）。"
+      );
+      $("surface").innerHTML = '<span class="empty">还没有汤。</span>';
+      return;
+    }
+    await newGame(wantedSoupId(soups));
+  } catch (e) {
+    banner("bad", errText(e));
+  }
+})();
+
+$("ask").addEventListener("click", ask);
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) ask(); });
+// 「重置」= 重玩当前这条：清掉它的本地记录再开一局
+$("newGame").addEventListener("click", () => {
+  if (currentSoupId) newGame(currentSoupId, { reset: true });
+});
+// 提示条的关闭按钮（条子是重建出来的，用委托）
+$("banners").addEventListener("click", (e) => {
+  if (e.target.closest("#tipClose")) closeTip();
+});
+$("reveal").addEventListener("click", revealTruth);
+// 回合里的按钮都是每次 renderTurns 重建出来的，用事件委托，免得重画时反复绑
+$("turns").addEventListener("click", (e) => {
+  const star = e.target.closest(".star");
+  if (star) {
+    const i = Number(star.dataset.i);
+    if (!Number.isNaN(i)) toggleMark(i);
+    return;
+  }
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const i = Number(btn.dataset.i);
+  if (Number.isNaN(i)) return;
+  if (btn.dataset.act === "edit") startEdit(i);
+  else if (btn.dataset.act === "cancel") cancelEdit();
+  else if (btn.dataset.act === "save") saveEdit(i);
+  else if (btn.dataset.act === "copy") copyQuestion(i, btn);
+});
+// 编辑框里回车提交、Esc 取消
+$("turns").addEventListener("keydown", (e) => {
+  const input = e.target.closest(".q-edit");
+  if (!input) return;
+  const i = Number(input.dataset.i);
+  if (Number.isNaN(i)) return;
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); saveEdit(i); }
+  else if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+});
+$("onlyMarked").addEventListener("click", () => {
+  onlyMarked = !onlyMarked;
+  renderTurns();
+});
+$("solveBtn").addEventListener("click", openSolve);
+$("playedBtn").addEventListener("click", markPlayed);
+$("hintBtn").addEventListener("click", askHint);
+$("solveSubmit").addEventListener("click", submitGuess);
+$("solveCancel").addEventListener("click", () => $("solveDialog").close());
+// 开发模式只多显示模型数据（概率 / Δ / 延迟 / 标记 / 复核），**不碰汤底** ——
+// 汤底只走「揭晓汤底」那一条路。
+$("devMode").addEventListener("change", (e) => {
+  devMode = e.target.checked;
+  renderTurns();
+});
+</script>
+</body>
+</html>

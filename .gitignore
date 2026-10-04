@@ -1,0 +1,16 @@
+# 凭据：永远不要提交
+# 用 .env* 而不是只写 .env —— 手上多一个 .env.local / .env.bak / .env.save 是常事，
+# 只挡 .env 的话这些全都能悄悄提交上去（编辑器备份文件尤其容易中招）。
+.env*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 运行日志（里面是每一问的原文，别传上去）
+logs/*.jsonl
+logs/*.json

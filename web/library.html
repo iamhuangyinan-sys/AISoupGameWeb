@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI 海龟汤</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f2f3f5;
+    --card: #ffffff;
+    --line: #e4e7ec;
+    --line-soft: #eef0f3;
+    --fg: #16181d;
+    --dim: #6b7280;
+    --faint: #9aa1ac;
+    --yes: #17a34a;
+    --no: #dc2626;
+    --both: #b45309;
+    --abstain: #7c3aed;
+    --accent: #2f4f8f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px 20px 32px;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px; color: var(--fg); background: var(--bg);
+  }
+  .page { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+
+  header { display: flex; align-items: center; gap: 10px; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0; }
+  .spacer { flex: 1; }
+  select, input[type=text], input[type=search], textarea {
+    background: var(--card); color: inherit; border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 11px; font-size: 13px; font-family: inherit;
+  }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: #7b93c9; }
+  button { font-family: inherit; cursor: pointer; }
+  button.ghost, a.ghost {
+    background: var(--card); color: inherit; border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 11px; font-size: 13px; text-decoration: none;
+    display: inline-flex; align-items: center;
+  }
+  button.ghost:hover, a.ghost:hover { border-color: #c8cdd6; }
+  button.primary {
+    padding: 7px 14px; border-radius: 7px; border: 1px solid #24406f;
+    background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
+  }
+  button.primary:hover:not(:disabled) { background: #395fa8; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .toolbar #search { flex: 1; min-width: 200px; }
+
+  /* 标签云：点一下就筛，再点取消。只列真的出现过的标签 */
+  .tagbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tagbar:empty { display: none; }
+  .tagbar .hint { font-size: 12px; color: var(--faint); }
+  .chip {
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 2px 10px; font-size: 12px; color: var(--dim); cursor: pointer;
+  }
+  .chip:hover { border-color: #c8cdd6; color: var(--fg); }
+  .chip.on { background: #eef2fa; border-color: #9ab0d8; color: var(--accent); font-weight: 600; }
+  .chip .n { color: var(--faint); font-weight: 400; margin-left: 3px; }
+
+  .count { font-size: 12px; color: var(--faint); }
+
+  .grid {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px 15px 11px; display: flex; flex-direction: column; gap: 8px;
+    cursor: pointer; transition: border-color .12s, box-shadow .12s;
+  }
+  .card:hover { border-color: #c8cdd6; box-shadow: 0 2px 10px rgba(22,24,29,.06); }
+  .card-head { display: flex; align-items: baseline; gap: 8px; }
+  .card-title { font-size: 15px; font-weight: 600; flex: 1; line-height: 1.4; }
+  .badge {
+    font-size: 11px; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid var(--line); color: var(--faint); background: var(--line-soft);
+  }
+  .badge.s-partial { color: var(--both); border-color: #f0e0b8; background: #fdf6e3; }
+  .badge.s-done { color: var(--yes); border-color: #bfe3cd; background: #eaf7ef; }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .card-tags:empty { display: none; }
+  .card-surface {
+    font-size: 13px; color: var(--dim); line-height: 1.65;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-foot {
+    display: flex; align-items: center; gap: 6px;
+    border-top: 1px solid var(--line-soft); padding-top: 9px; margin-top: auto;
+  }
+  .card-foot .play { font-size: 12px; padding: 4px 12px; }
+  .card-foot .acts { margin-left: auto; display: flex; gap: 4px; }
+  .icon {
+    background: none; border: none; padding: 2px 5px; font-size: 13px;
+    color: var(--faint); border-radius: 5px; display: inline-flex; align-items: center;
+  }
+  .icon svg { display: block; }
+  .icon:hover { color: var(--accent); background: var(--line-soft); }
+  .icon.danger:hover { color: var(--no); }
+  .empty { text-align: center; color: var(--faint); padding: 48px 0; font-size: 13px; }
+
+  /* 标签编辑器：一个标签一个小胶囊，✕ 删掉，点文字就地改名。
+     不用「空格分隔的一行文本」是因为玩家看不到自己到底打了几个标签，
+     也没法单独删掉中间某一个。
+     底下直接就是「输入框 + ＋」，不套外框 —— 弹窗本身已经在框里了。 */
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .tag-list:empty { display: none; margin-bottom: 0; }
+  .tag-item {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #eef2fa; border: 1px solid #cddffb; border-radius: 999px;
+    padding: 2px 4px 2px 10px; font-size: 12px; color: var(--accent);
+  }
+  .tag-name { cursor: text; }
+  .tag-name:hover { text-decoration: underline dotted; }
+  .tag-del {
+    background: none; border: none; padding: 0 3px; font-size: 11px; line-height: 1;
+    color: #8ba2c9; cursor: pointer;
+  }
+  .tag-del:hover { color: var(--no); }
+  .tag-input {
+    width: 88px; font-size: 12px; padding: 1px 6px;
+    border: 1px solid #7b93c9; border-radius: 999px; background: var(--card);
+  }
+  .tag-add { display: flex; gap: 6px; align-items: center; }
+  .tag-add input { flex: 1; }
+  .tag-add button { flex: none; font-size: 15px; line-height: 1; padding: 5px 11px; }
+
+  dialog {
+    border: 1px solid var(--line); border-radius: 12px; padding: 22px;
+    background: var(--card); color: var(--fg); width: min(620px, 92vw);
+    box-shadow: 0 12px 40px rgba(22,24,29,.18);
+  }
+  dialog::backdrop { background: rgba(22,24,29,.32); }
+  dialog h3 { margin: 0 0 4px; font-size: 16px; }
+  dialog .sub { font-size: 12px; color: var(--faint); margin-bottom: 14px; line-height: 1.7; }
+  dialog label { display: block; font-size: 12px; color: var(--dim); margin: 12px 0 4px; }
+  dialog input, dialog textarea, dialog select { width: 100%; }
+  dialog textarea { line-height: 1.7; resize: vertical; min-height: 90px; }
+  dialog textarea.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  /* 导入那个框拉长一点 —— 题库文件动辄几十条，框太小得一直滚 */
+  dialog textarea.tall { min-height: 320px; }
+  .dialog-foot { display: flex; gap: 8px; align-items: center; margin-top: 18px; }
+  .dialog-foot .spacer { flex: 1; }
+  .note { font-size: 12px; line-height: 1.7; color: var(--dim); margin-top: 12px; }
+  .note ul { margin: 6px 0 0; padding-left: 18px; }
+  .note code {
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+    background: var(--line-soft); padding: 1px 4px; border-radius: 4px;
+  }
+  .problems {
+    margin-top: 12px; padding: 10px 12px; border-radius: 7px; font-size: 12px;
+    background: #fdf6e3; border: 1px solid #f0e0b8; color: #8a6d1f; line-height: 1.8;
+    max-height: 180px; overflow-y: auto;
+  }
+
+  /* 汤底折叠：还没玩过的题，编辑时先把汤底盖住 —— 打开弹窗的动机常常只是想
+     改个标签或标题，而「汤底」正好在标签上面，扫一眼就被剧透了。 */
+  .truth-fold {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--line-soft); border: 1px dashed #d8dee7;
+    border-radius: 7px; padding: 10px 12px;
+  }
+  .truth-fold .why { flex: 1; font-size: 12px; color: var(--dim); line-height: 1.7; }
+  .truth-fold button { flex: none; }
+  .truth-hide { margin-top: 6px; text-align: right; }
+  .link-btn {
+    background: none; border: none; padding: 0; font-size: 12px;
+    color: var(--faint); text-decoration: underline dotted;
+  }
+  .link-btn:hover { color: var(--accent); }
+  .bad { color: var(--no); font-size: 13px; margin-top: 12px; }
+  .ok { color: var(--yes); font-size: 13px; margin-top: 12px; }
+
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: 1fr; }
+    .toolbar #search { flex: 1 0 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>AI 海龟汤</h1>
+    <span class="spacer"></span>
+    <span id="settingsHost"></span>
+  </header>
+
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="搜索标题、标签、汤面…" autocomplete="off" />
+    <select id="status" title="按玩过的状态筛选">
+      <option value="all">全部</option>
+      <option value="new">未玩</option>
+      <option value="partial">玩了一半</option>
+      <option value="done">玩过的</option>
+    </select>
+    <button class="ghost" id="randomBtn">随机</button>
+    <button class="primary" id="newBtn">新增</button>
+    <button class="ghost" id="importBtn">导入</button>
+  </div>
+
+  <div class="tagbar" id="tagbar"></div>
+  <div class="count" id="count"></div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<dialog id="editDialog">
+  <h3 id="editTitle">新增一条汤</h3>
+  <label>标题</label>
+  <input type="text" id="fTitle" placeholder="请输入标题" maxlength="60" />
+  <label>汤面</label>
+  <textarea id="fSurface" placeholder="请输入汤面"></textarea>
+  <label>汤底</label>
+  <div class="truth-fold" id="truthFold" hidden>
+    <span class="why" id="truthFoldWhy"></span>
+    <button class="ghost" id="truthShow" type="button">展开</button>
+  </div>
+  <textarea id="fTruth" placeholder="请输入汤底"></textarea>
+  <div class="truth-hide" id="truthHideRow" hidden>
+    <button class="link-btn" id="truthHide" type="button">重新折起汤底</button>
+  </div>
+  <label>标签</label>
+  <div>
+    <div class="tag-list" id="tagList"></div>
+    <div class="tag-add">
+      <input type="text" id="tagNew" placeholder="输入标签后回车" maxlength="12" />
+      <button class="ghost" id="tagAdd" type="button" title="加这个标签">＋</button>
+    </div>
+  </div>
+  <div id="editMsg"></div>
+  <div class="dialog-foot">
+    <span class="spacer"></span>
+    <button class="ghost" id="editCancel">取消</button>
+    <button class="primary" id="editSave">保存</button>
+  </div>
+</dialog>
+
+<dialog id="importDialog">
+  <h3>导入题库</h3>
+  <div class="sub">
+    一条汤写成这样就行，多条接着往下写：<br />
+    <code># 标题</code>（标题写一整行）<br />
+    <code>汤面…</code><br />
+    <code>---</code>（单独一行）<br />
+    <code>汤底…</code>
+  </div>
+  <label>粘贴内容，或选一个文件</label>
+  <textarea id="importText" class="mono tall"
+    placeholder="# 电梯&#10;我走进电梯准备去上学…&#10;---&#10;我忘了按楼层…&#10;&#10;# 黑猫&#10;我杀了人…&#10;---&#10;那只猫一直看着我…"></textarea>
+  <div class="dialog-foot">
+    <button class="ghost" id="pickFile">选文件…</button>
+    <input type="file" id="fileInput" accept=".txt,.json,text/plain" hidden />
+    <span class="spacer"></span>
+    <button class="ghost" id="importCancel">取消</button>
+    <button class="primary" id="importGo">导入</button>
+  </div>
+  <div id="importMsg"></div>
+</dialog>
+
+<script src="/store.js"></script>
+<script>
+// --- 本地进度 ---
+// 和游戏页共用同一份记录，所以这里看到的「玩过的」就是游戏页写下的。
+// ⚠️ 只读不写：题库页不碰玩家的对局数据。
+let store = loadStore();
+
+const STATUS = {
+  new:     { text: "未玩",     cls: "s-new" },
+  partial: { text: "玩了一半", cls: "s-partial" },
+  done:    { text: "玩过的",   cls: "s-done" },
+};
+
+let soups = [];
+let tagFilter = new Set();
+let editingId = null;    // null = 新增
+let truthFolded = false;   // 编辑弹窗里汤底此刻是否折着
+let truthFoldable = false; // 这条汤**该不该**有折叠这回事（没玩过的才有意义）
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// 题库相关端点不需要 key，但统一走 credHeaders() 省得以后加端点时漏掉。
+async function api(path, options = {}) {
+  // 同 store.js 的 credFetch：header 要合并，不能被 options 整个覆盖
+  const { headers, ...rest } = options;
+  const r = await fetch(path, { ...rest, headers: { ...credHeaders(), ...headers } });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || data.reply || `请求失败（${r.status}）`);
+  return data;
+}
+
+// --- 状态 ---
+function progressOf(id) {
+  return (store.soups || {})[id] || null;
+}
+
+function statusOf(id) {
+  const p = progressOf(id);
+  if (!p) return "new";
+  // finished 只要有值就是「玩过的」—— 老数据里可能是 "solved"/"revealed"/"played"，
+  // 现在统一写 "done"。三种状态的区分已经去掉了（见游戏页的注释）。
+  if (p.finished) return "done";
+  return (p.turns && p.turns.length) ? "partial" : "new";
+}
+
+// --- 筛选 ---
+function allTags() {
+  const count = new Map();
+  for (const s of soups) {
+    for (const t of s.tags || []) count.set(t, (count.get(t) || 0) + 1);
+  }
+  // 出现次数多的排前面；同次数按字面排，保证顺序稳定
+  return [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh"));
+}
+
+// 顺序就是题库自己的顺序（编号顺序）—— 后端已经排好了，这里不再动它。
+function visibleSoups() {
+  const q = $("search").value.trim().toLowerCase();
+  const status = $("status").value;
+
+  return soups.filter((s) => {
+    if (status !== "all" && statusOf(s.id) !== status) return false;
+    // 多选标签取「都要有」（AND）—— 想找「既悬疑又搞笑」的汤时这才是有用的语义
+    for (const t of tagFilter) {
+      if (!(s.tags || []).includes(t)) return false;
+    }
+    if (q) {
+      // ⚠️ 只搜标题 / 标签 / 汤面。汤底压根没下发到浏览器，想搜也搜不到 ——
+      //    这正是我们要的：搜索结果里不可能漏出答案。
+      const hay = `${s.title}\n${(s.tags || []).join(" ")}\n${s.surface}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// --- 渲染 ---
+function renderTags() {
+  const tags = allTags();
+  // ⚠️ 先把**已经不存在的**标签从筛选里剔掉。不剔的话会卡死：某个标签被改掉或
+  // 删掉之后，tagbar 上就没有这个 chip 可点了，而筛选还留着它 → 永远筛出 0 条，
+  // 玩家也没法取消（那个按钮已经不在界面上）。
+  const alive = new Set(tags.map(([t]) => t));
+  for (const t of [...tagFilter]) {
+    if (!alive.has(t)) tagFilter.delete(t);
+  }
+
+  if (!tags.length) {
+    $("tagbar").innerHTML = '<span class="hint">还没有标签。点卡片右下角的 ✎ 就能加。</span>';
+    return;
+  }
+  $("tagbar").innerHTML = tags
+    .map(([t, n]) => {
+      const on = tagFilter.has(t) ? " on" : "";
+      return `<button class="chip${on}" data-tag="${esc(t)}">${esc(t)}<span class="n">${n}</span></button>`;
+    })
+    .join("");
+}
+
+// 铅笔图标用内联 SVG —— ✎ 这个字符在不同字体里粗细差很多，画一个更稳。
+const PENCIL = `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+    <path d="M11.2 2.3a1.6 1.6 0 0 1 2.3 2.3L5.6 12.5l-3.2.9.9-3.2z"
+          fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+  </svg>`;
+
+function cardHTML(s) {
+  const st = STATUS[statusOf(s.id)] || STATUS.new;
+  const tags = (s.tags || [])
+    .map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}</span>`)
+    .join("");
+  return `<div class="card" data-id="${esc(s.id)}">
+    <div class="card-head">
+      <div class="card-title">${esc(s.title)}</div>
+      <span class="badge ${st.cls}">${st.text}</span>
+    </div>
+    <div class="card-tags">${tags}</div>
+    <div class="card-surface">${esc(s.surface)}</div>
+    <div class="card-foot">
+      <button class="primary play" data-act="play" data-id="${esc(s.id)}">开始玩</button>
+      <div class="acts">
+        <button class="icon" data-act="edit" data-id="${esc(s.id)}" title="编辑">${PENCIL}</button>
+        <button class="icon danger" data-act="del" data-id="${esc(s.id)}" title="删除">✕</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function render() {
+  renderTags();
+  const list = visibleSoups();
+  const total = soups.length;
+  const played = soups.filter((s) => statusOf(s.id) !== "new").length;
+  $("count").textContent = list.length === total
+    ? `共 ${total} 条，已玩 ${played} 条`
+    : `筛出 ${list.length} 条（共 ${total} 条，已玩 ${played} 条）`;
+  $("grid").innerHTML = list.length
+    ? list.map(cardHTML).join("")
+    : `<div class="empty">没有符合条件的汤。</div>`;
+
+  // 「随机」只挑未玩的。一道都没剩下就直接禁用 —— 比点了没反应好。
+  const left = total - played;
+  $("randomBtn").disabled = left === 0;
+  $("randomBtn").title = left
+    ? `随便挑一道没玩过的（还剩 ${left} 道）`
+    : "没有未玩的题了 —— 全都玩过了";
+}
+
+async function reload() {
+  const data = await api("/api/soups");
+  soups = data.soups;
+  store = loadStore();   // 回到这个页面时进度可能已经变了
+  render();
+}
+
+// --- 开始玩 ---
+function play(id) {
+  // 游戏页读 ?id= 决定开哪一条；同时也记 lastSoup，下次直接打开它
+  location.href = `/?id=${encodeURIComponent(id)}`;
+}
+
+// --- 随机 ---
+// 只挑**未玩**的：随机按钮的用处就是「帮我决定玩哪个，别给我看过的」。
+//
+// ⚠️ 刻意**不看**当前的搜索/标签/状态筛选，只认「未玩」。跟着筛选走会有两种都
+// 说不通的结局：筛出来的全是玩过的 → 点了没反应；或者玩家明明看着 3 张卡片、
+// 却被带到第 4 张去 —— 那更像 bug。要挑特定范围的，直接在筛完的网格里点就行。
+function randomUnplayed() {
+  const pool = soups.filter((s) => statusOf(s.id) === "new");
+  if (!pool.length) {
+    alert("没有未玩的题了。想重玩某一道，点它卡片上的「开始玩」。");
+    return;
+  }
+  play(pool[Math.floor(Math.random() * pool.length)].id);
+}
+
+// --- 新增 / 编辑 ---
+// 一个弹窗管两件事：新增、改现有的汤（标题 / 汤面 / 汤底 / 标签都能改）。
+// 题库里每一条都一样 —— 不分内置还是导入的。
+let editTags = [];
+const MAX_TAGS = 12;
+
+function renderTagEditor() {
+  $("tagList").innerHTML = editTags
+    .map((t, i) => `<span class="tag-item">
+        <span class="tag-name" data-act="rename" data-i="${i}" title="点一下改名">${esc(t)}</span>
+        <button class="tag-del" type="button" data-act="drop" data-i="${i}" title="删掉这个标签">✕</button>
+      </span>`)
+    .join("");
+}
+
+function addTag() {
+  const raw = $("tagNew").value.trim().slice(0, 12);
+  $("tagNew").value = "";
+  if (!raw) return;
+  if (editTags.includes(raw)) {
+    $("editMsg").innerHTML = '<div class="bad">这个标签已经有了。</div>';
+    return;
+  }
+  if (editTags.length >= MAX_TAGS) {
+    $("editMsg").innerHTML = `<div class="bad">最多 ${MAX_TAGS} 个标签。</div>`;
+    return;
+  }
+  editTags.push(raw);
+  $("editMsg").innerHTML = "";
+  renderTagEditor();
+  $("tagNew").focus();
+}
+
+// 点标签文字就地改。换成输入框，回车/失焦保存，Esc 放弃。
+function renameTag(i) {
+  const host = $("tagList").querySelector(`.tag-name[data-i="${i}"]`);
+  if (!host) return;
+  const input = document.createElement("input");
+  input.className = "tag-input";
+  input.value = editTags[i];
+  input.maxLength = 12;
+  host.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let settled = false;   // ⚠️ 不加这个，回车之后元素被移除还会触发一次 blur，重复提交
+  const commit = (save) => {
+    if (settled) return;
+    settled = true;
+    const value = input.value.trim().slice(0, 12);
+    if (save && value && !editTags.includes(value)) editTags[i] = value;
+    renderTagEditor();
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); commit(true); }
+    else if (e.key === "Escape") { e.preventDefault(); commit(false); }
+  });
+  input.addEventListener("blur", () => commit(true));
+}
+
+function openEdit(soup) {
+  editingId = soup ? soup.id : null;
+  editTags = [...(soup?.tags || [])];
+
+  $("editTitle").textContent = soup ? `编辑《${soup.title}》` : "新增一条汤";
+  $("fTitle").value = soup ? soup.title : "";
+  $("fSurface").value = soup ? soup.surface : "";
+  $("fTruth").value = soup?.truth || "";
+  $("tagNew").value = "";
+  $("editMsg").innerHTML = "";
+
+  // 汤底默认折起来 —— 但只在「编辑一条你还没玩过的汤」时。
+  //   新增（没有汤底可剧透）和玩过的（早就知道了）都不折，折了只是多一次点击。
+  const st = soup ? statusOf(soup.id) : "new";
+  truthFoldable = !!soup && st !== "done";
+  truthFolded = truthFoldable;
+  $("truthFoldWhy").textContent = st === "partial" ? "这局你玩了一半" : "这条你还没玩过";
+  applyTruthFold();
+
+  renderTagEditor();
+  $("editDialog").showModal();
+  $("fTitle").focus();
+}
+
+function applyTruthFold() {
+  // 折起来只是把 textarea 藏掉，**值一直留着** —— 所以折着直接保存不会把汤底清空。
+  $("truthFold").hidden = !truthFolded;
+  $("fTruth").hidden = truthFolded;
+  // 「重新折起」只在真有得折、且已经被展开时出现。玩过的 / 新增本来就没折，
+  // 给它们挂一个「重新折起」等于凭空多一个让人困惑的按钮。
+  $("truthHideRow").hidden = !(truthFoldable && !truthFolded);
+}
+
+function setTruthFolded(folded) {
+  truthFolded = folded;
+  applyTruthFold();
+  if (!folded) $("fTruth").focus();
+}
+
+async function openEditReal(id) {
+  // 列表接口刻意不含汤底（防剧透），所以要单独取一次完整内容
+  try {
+    const d = await api(`/api/soups/${encodeURIComponent(id)}`);
+    openEdit(d.soup);
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function saveEdit() {
+  $("editSave").disabled = true;
+  try {
+    const payload = {
+      title: $("fTitle").value.trim(),
+      surface: $("fSurface").value.trim(),
+      truth: $("fTruth").value.trim(),
+      tags: editTags,
+    };
+    if (!payload.title) { $("editMsg").innerHTML = '<div class="bad">标题不能空着。</div>'; return; }
+    if (!payload.surface) { $("editMsg").innerHTML = '<div class="bad">汤面不能空着。</div>'; return; }
+    if (!payload.truth) { $("editMsg").innerHTML = '<div class="bad">汤底不能空着。</div>'; return; }
+    await api(editingId ? `/api/soups/${encodeURIComponent(editingId)}` : "/api/soups", {
+      method: editingId ? "PUT" : "POST",
+      body: JSON.stringify(payload),
+    });
+    $("editDialog").close();
+    await reload();
+  } catch (e) {
+    $("editMsg").innerHTML = `<div class="bad">${esc(e.message)}</div>`;
+  } finally {
+    $("editSave").disabled = false;
+  }
+}
+
+// --- 导入 ---
+function countBlocks(text) {
+  // 只是给个即时反馈（「识别到 N 条」），真正的解析在后端做
+  return (text.match(/^#\s*\S/gm) || []).length;
+}
+
+function openImport() {
+  $("importText").value = "";
+  $("importMsg").innerHTML = "";
+  $("fileInput").value = "";
+  $("importDialog").showModal();
+  $("importText").focus();
+}
+
+async function doImport() {
+  const text = $("importText").value;
+  if (!text.trim()) {
+    $("importMsg").innerHTML = '<div class="bad">还没粘贴内容。</div>';
+    return;
+  }
+  $("importGo").disabled = true;
+  $("importGo").textContent = "导入中…";
+  try {
+    const r = await fetch("/api/soups/import", {
+      method: "POST",
+      headers: credHeaders(),
+      body: JSON.stringify({ text }),
+    });
+    const d = await r.json();
+    const problems = d.problems || [];
+    const parts = [];
+    if (d.imported?.length) parts.push(`进了 ${d.imported.length} 条`);
+    let html = parts.length
+      ? `<div class="ok">${parts.join("，")}</div>`
+      : `<div class="bad">${esc(d.detail || "一条都没进来。")}</div>`;
+    if (problems.length) {
+      html += `<div class="problems"><b>这 ${problems.length} 条没进来：</b><br />`
+        + problems.map((p) => `第 ${p.index} 条《${esc(p.title)}》：${esc(p.message)}`).join("<br />")
+        + `</div>`;
+    }
+    $("importMsg").innerHTML = html;
+    if (d.imported?.length) await reload();
+  } catch (e) {
+    $("importMsg").innerHTML = `<div class="bad">${esc(e.message)}</div>`;
+  } finally {
+    $("importGo").disabled = false;
+    $("importGo").textContent = "导入";
+  }
+}
+
+
+// --- 事件（都是重建出来的元素，一律用委托）---
+$("grid").addEventListener("click", async (e) => {
+  const chip = e.target.closest(".chip");
+  if (chip) {
+    const t = chip.dataset.tag;
+    tagFilter.has(t) ? tagFilter.delete(t) : tagFilter.add(t);
+    render();
+    return;
+  }
+  const btn = e.target.closest("button[data-act]");
+  if (btn) {
+    const id = btn.dataset.id;
+    if (btn.dataset.act === "play") play(id);
+    else if (btn.dataset.act === "edit") openEditReal(id);
+    else if (btn.dataset.act === "del") {
+      const soup = soups.find((s) => s.id === id);
+      if (!confirm(`删掉《${soup?.title ?? id}》？这个不能撤销。`)) return;
+      try { await api(`/api/soups/${encodeURIComponent(id)}`, { method: "DELETE" }); await reload(); }
+      catch (err) { alert(err.message); }
+    }
+    return;
+  }
+  // 点卡片空白处 = 开始玩（和「开始玩」按钮一个效果）
+  const card = e.target.closest(".card");
+  if (card) play(card.dataset.id);
+});
+
+$("tagbar").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  const t = chip.dataset.tag;
+  tagFilter.has(t) ? tagFilter.delete(t) : tagFilter.add(t);
+  render();
+});
+
+$("search").addEventListener("input", render);
+$("status").addEventListener("change", render);
+$("randomBtn").addEventListener("click", randomUnplayed);
+$("newBtn").addEventListener("click", () => openEdit(null));
+$("truthShow").addEventListener("click", () => setTruthFolded(false));
+$("truthHide").addEventListener("click", () => setTruthFolded(true));
+$("editCancel").addEventListener("click", () => $("editDialog").close());
+$("editSave").addEventListener("click", saveEdit);
+// 标签编辑器：＋ 加、✕ 删、点文字改名
+$("tagAdd").addEventListener("click", addTag);
+$("tagNew").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); addTag(); }
+});
+$("tagList").addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]");
+  if (!el) return;
+  const i = Number(el.dataset.i);
+  if (Number.isNaN(i)) return;
+  if (el.dataset.act === "drop") {
+    editTags.splice(i, 1);
+    renderTagEditor();
+  } else if (el.dataset.act === "rename") {
+    renameTag(i);
+  }
+});
+$("importBtn").addEventListener("click", openImport);
+$("importCancel").addEventListener("click", () => $("importDialog").close());
+$("importGo").addEventListener("click", doImport);
+$("pickFile").addEventListener("click", () => $("fileInput").click());
+$("fileInput").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  $("importText").value = await file.text();
+  $("importMsg").innerHTML = `<div class="note">读到 ${file.name}，识别到约 ${countBlocks($("importText").value)} 条。</div>`;
+});
+$("importText").addEventListener("input", () => {
+  const n = countBlocks($("importText").value);
+  $("importMsg").innerHTML = n ? `<div class="note">识别到约 ${n} 条。</div>` : "";
+});
+
+(async function init() {
+  try {
+    await reload();
+  } catch (e) {
+    $("grid").innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+  }
+})();
+
+// 「设置」弹窗：填自己的 API key
+mountSettings($("settingsHost"));
+</script>
+</body>
+</html>
