@@ -28,6 +28,13 @@
   }
   .page { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 
+  /* ⚠️ 必须有这一条。浏览器默认的 `[hidden] { display: none }` 优先级极低，
+     任何设过 display 的类都能盖掉它 —— 例如 `.truth-fold { display: flex }`，
+     结果就是「明明设了 hidden，元素照样显示出来」。视觉上极像「代码没生效」。
+     实测踩过一次：汤底折叠块在「新增」和「编辑已玩过的汤」时也出现了。
+     !important 在这里是刻意的：兜底规则必须赢过所有组件自己的 display。 */
+  [hidden] { display: none !important; }
+
   header { display: flex; align-items: center; gap: 10px; }
   h1 { font-size: 17px; font-weight: 600; margin: 0; }
   .spacer { flex: 1; }

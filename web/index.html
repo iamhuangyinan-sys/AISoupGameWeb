@@ -21,6 +21,14 @@
     --abstain: #7c3aed;
   }
   * { box-sizing: border-box; }
+
+  /* ⚠️ 必须有这一条。浏览器默认的 `[hidden] { display: none }` 优先级极低，
+     任何设过 display 的类都能盖掉它 —— 于是「设了 hidden」的元素照样渲染出来，
+     而且看起来完全像「代码没生效」。
+     目前这一页的 hidden 元素（truthBlock / playedBtn）碰巧没被盖掉，
+     但这条兜底要留着：加一个带 display 的类就可能重新踩上。
+     !important 是刻意的：兜底规则必须赢过所有组件自己的 display。 */
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     margin: 0; padding: 16px 20px;
