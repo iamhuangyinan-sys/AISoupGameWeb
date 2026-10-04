@@ -1,4 +1,4 @@
-"""FastAPI 入口（§8.1 / §3.1）。
+"""FastAPI 入口。
 
 链路：浏览器 → 本地规则层意图识别 → Jev 三态判定 → 代码派生四态 → 模板回答。
 
@@ -6,8 +6,8 @@
 唯一例外是 `POST /api/games/{id}/reveal`：玩家主动认输时才把汤底送过去，
 且本局随即作废（后续 `ask` 返回 409），想重玩只能点「重置」。
 
-对局状态现在放在内存里（`_games`）。单机单人够用，重启即清空；
-持久化属 P2 的事。
+对局状态放在内存里（`_games`）。单机单人够用，重启即清空 —— 玩家看到的历史
+其实是前端 localStorage 里那份，后端只是重建一局。
 """
 
 from __future__ import annotations
@@ -278,9 +278,9 @@ def turn_public(turn: Turn, reply: str) -> dict:
     return out
 
 
-# --- 回合日志（§6.2） -----------------------------------------------------------
-# ⚠️ 与 §6.2 的差异：原文的 `scores: {holds, fails, relevant}` 已改成三路概率分布
-#    （判定层改成三态 + 代码派生 both，见 soup/rules.py）。
+# --- 回合日志 -------------------------------------------------------------------
+# ⚠️ 与最初设计的不同：原来的 `scores: {holds, fails, relevant}`（三维度各一个概率）
+#    已改成一条三路概率分布 —— 判定层改成三态 + 代码派生 both，见 soup/rules.py。
 
 
 def _log_turn(game: Game, turn: Turn, reply: str) -> None:
@@ -307,7 +307,7 @@ def _log_turn(game: Game, turn: Turn, reply: str) -> None:
         config.LOG_DIR.mkdir(parents=True, exist_ok=True)
         with config.TURN_LOG.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        # §4.3：灰区样本是调阈值最好的素材，单独落一份
+        # 灰区样本是调阈值最好的素材，单独落一份
         if turn.flags:
             with config.GRAY_LOG.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -652,7 +652,7 @@ def ask(game_id: str, request: Request, body: AskBody) -> JSONResponse:
 
 @app.post("/api/games/{game_id}/hint")
 def hint(game_id: str, request: Request, body: HintBody | None = None) -> JSONResponse:
-    """根据已经问过的问题给一句方向性提示（§4.5）。
+    """根据已经问过的问题给一句方向性提示。
 
     ⚠️ 提示是**引导**，不能剧透 —— 约束写在 soup/hinter.py 的 prompt 里，
     那边特意要求「只说该往哪个方向问，不说真相是什么」。
@@ -710,7 +710,7 @@ def _judge_error_text(exc: Exception) -> str:
 
 @app.post("/api/games/{game_id}/solve")
 def solve(game_id: str, request: Request, body: SolveBody) -> JSONResponse:
-    """玩家提交自己写的真相，判定是否通关（§4.5b）。
+    """玩家提交自己写的真相，判定是否通关。
 
     ⚠️ **只有通过了才把汤底发回去**（这时本局随之结束）。没通过只回「还差什么」，
     不给汤底 —— 否则剧透之后就没得猜了。

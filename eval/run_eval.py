@@ -1,13 +1,22 @@
-"""评测：用人工标注集算 §9.2 的各项指标。
+"""评测：用人工标注集算判定层的各项指标。
 
-这是 §12 待验证清单的执行工具。你只需要准备两样东西：
+「判定准不准」不能靠感觉 —— 这个脚本是唯一能回答它、而且**不额外花钱**的工具
+（同一批分布可以离线重算不同阈值）。
 
-  1. 一条汤（放进 data/*.json，格式见 §6.1，四个必需字段）
-  2. 一份标注（eval/labels.csv）
+你只需要准备两样东西：
+
+  1. 一条汤（放进 data/soup.json，四个必需字段：id / title / surface / truth）
+  2. 一份标注（eval/labels.csv，照 eval/labels_template.csv 改）
 
 然后跑：
 
     python eval/run_eval.py
+
+⚠️ 需要一把 Jev 的 key（`--second-opinion` 还需要 DeepSeek 的）。
+   它从**环境变量**取，不走网页那套（浏览器里填的 key 只对网页有效）：
+
+       $env:JEV_API_KEY="sk-or-v1-..."        # PowerShell
+       export JEV_API_KEY=sk-or-v1-...        # bash
 
 ## 标注文件格式
 
@@ -26,7 +35,7 @@ CSV，列固定为 `soup_id,question,expected_verdict,note`：
 
 ## 为什么一次调用就能扫阈值
 
-每次判定的**完整四路概率分布**都会被缓存下来（logs/eval_*.json）。
+每次判定的**完整三路概率分布**都会被缓存下来（logs/eval_*.json）。
 所以 `--sweep` 可以在同一批数据上重算不同阈值，**不需要重新调用 API、不额外花钱**。
 
 ## 常用参数
@@ -36,7 +45,7 @@ CSV，列固定为 `soup_id,question,expected_verdict,note`：
     --margin <0-1>     |P(是)-P(不是)| ≤ 此值 ⇒ 判「是也不是」，默认取 config.JEV_BOTH_MARGIN
     --irrelevant-min   P(不重要) ≥ 此值 ⇒ 判「不重要」，默认取 config.JEV_IRRELEVANT_MIN
     --abstain <0-1>    最大概率 < 此值 ⇒ 弃权，默认取 config.JEV_ABSTAIN
-    --sweep            打印阈值扫描表（§12 第 6 项）
+    --sweep            打印阈值扫描表（在缓存上离线找最优点，不花钱）
     --reuse <file>     复用上次缓存的结果，完全不调用 API（免费重跑）
     --limit <n>        只跑前 n 题，用来先小规模试水
 """
@@ -123,7 +132,9 @@ VERDICT_ZH = {
     "error": "调用失败",
 }
 
-# §9.2 的目标值，用于在报告里标出达标与否
+# 目标值，用于在报告里标出达标与否。
+# ⚠️ 这些是**期望值不是实测值** —— 当前实测（两锅汤 49 题）accuracy 约 69%、
+#    fatal 0~2%，离 accuracy 0.90 还差得远，别把这张表当成「已经达到」。
 TARGETS = {
     "accuracy": 0.90,
     "fatal": 0.02,
@@ -440,7 +451,7 @@ def evaluate(
     decided = [r for r in ok_rows if actuals[r.question] != "abstain"]
     correct_decided = sum(1 for r in decided if actuals[r.question] == r.expected)
 
-    # §9.2 致命错误：该答 no 却答 yes。单独统计，不平摊。
+    # 致命错误：该答 no 却答 yes。单独统计，不平摊到总体准确率里。
     should_no = [r for r in ok_rows if r.expected == "no"]
     fatal = [r for r in should_no if actuals[r.question] == "yes"]
     should_yes = [r for r in ok_rows if r.expected == "yes"]
@@ -549,7 +560,7 @@ def print_report(
 
     print()
     print("=" * 96)
-    print("指标（§9.2）")
+    print("指标")
     print("=" * 96)
     print(f"  题目总数                {m['total']}（可评分 {m['scored']}）")
     if m["errors"]:
@@ -603,7 +614,7 @@ def print_report(
 
 
 def print_sweep(rows: list[Row]) -> None:
-    """§12 第 6 项：扫阈值找最优点。用缓存分布重算，不花钱。
+    """扫阈值找最优点。用缓存分布重算，不花钱。
 
     现在有两个可调项：margin（决定何时判「是也不是」）和 abstain（弃权线）。
     irrelevant_min 固定 —— 这批标注里只有 1 道不重要题，扫它没有意义。
@@ -630,7 +641,7 @@ def print_sweep(rows: list[Row]) -> None:
                 f"{m['reverse_fatal_rate']:>10.1%}{m['abstain_rate']:>7.1%}"
                 f"{len(m['over_abstain']):>7}{m['both_hit']:>4}/{m['both_n']:<5}{tag}"
             )
-            # 排序：先保致命错误率达标，再要求弃权率落在 §9.2 目标带内，
+            # 排序：先保致命错误率达标，再要求弃权率落在目标带内，
             # 然后才比准确率。少了中间那项会挑出「零弃权」的档位 —— 那等于在硬猜。
             key = (
                 meets,
@@ -667,7 +678,7 @@ def print_second_compare(
 ) -> None:
     """二次判定开 / 关对比。全部在缓存上离线重算，不再花一分钱。
 
-    重点看 §8.2 决策门关心的一项：**致命错误率**。二次判定把「弃权」变成
+    重点看**致命错误率**（该答不是却答是）。二次判定把「弃权」变成
     「有答案」——弃权本来不算错，一旦给了答案就可能答错，所以这个对比是
     判断该不该开二次判定的唯一依据。
     """
@@ -751,7 +762,7 @@ def print_second_compare(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="用人工标注集评测海龟汤判定层（§9.2 指标）",
+        description="用人工标注集评测海龟汤判定层（准确率 / 致命错误率 / 弃权率）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--labels", default=str(ROOT / "eval" / "labels.csv"))

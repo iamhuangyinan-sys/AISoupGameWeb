@@ -1,4 +1,4 @@
-"""游戏状态机（§8.1）。
+"""游戏状态机。
 
 主链路：
 
@@ -31,9 +31,11 @@ from soup.rules import (
 )
 
 _PENDING = {
-    Intent.HINT: "提示生成（§4.5）尚未接入 —— 计划在 P3 实现",
-    Intent.SOLVE: "通关判定（§4.5b）尚未接入 —— 计划在 P3 实现",
-    Intent.CHAT: "闲聊不做判定 —— 计划在 P1 返回固定话术",
+    # ⚠️ 这两条现在是**死代码** —— app.py 里的 /hint 和 /solve 已经各自实现了，
+    #    不会走到 engine.ask() 这条路。留着是为了说明「引擎本身不认识这两种意图」。
+    Intent.HINT: "提示生成还没接进引擎 —— 由 app.py 的 /hint 单独处理",
+    Intent.SOLVE: "通关判定还没接进引擎 —— 由 app.py 的 /solve 单独处理",
+    Intent.CHAT: "闲聊不做判定",
 }
 
 
@@ -101,7 +103,7 @@ class GameEngine:
         if primary is Verdict.ABSTAIN:
             flags.append("abstained")
         elif low_confidence(result.distribution):
-            # 采用了答案但把握不足 —— 灰区样本，调阈值的最好素材（§4.3）
+            # 采用了答案但把握不足 —— 灰区样本，调阈值的最好素材
             flags.append("low_confidence")
 
         verdict, opinion = cascade.review(
@@ -189,7 +191,7 @@ class GameEngine:
             self.history.append(turn)
 
     def reply(self, turn: Turn) -> str:
-        """D9：回答只用模板，禁止自由生成。"""
+        """回答只用模板，禁止自由生成 —— 免得模型自己编一句话糊弄过去。"""
         return render_turn_reply(turn)
 
     def close(self) -> None:

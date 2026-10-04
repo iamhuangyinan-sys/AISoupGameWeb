@@ -561,7 +561,7 @@ async function saveEdit(i) {
   }
 }
 
-// --- 进度提示（§4.5）---
+// --- 进度提示 ---
 // 提示条一直挂在上面碍眼，所以给一个关闭按钮：关掉就是不要了，
 // 连本地记录一起清掉 —— 刷新后不该自己又冒出来。
 function closeTip() {
@@ -745,7 +745,7 @@ async function markPlayed() {
   }
 }
 
-// --- 揭示真相（§4.5b 通关判定）---
+// --- 揭示真相（通关判定）---
 function openSolve() {
   if (!gameId || done) return;
   $("guess").value = "";

@@ -1,4 +1,4 @@
-"""判定后端注册表（D17：唯一保留的抽象）。"""
+"""判定后端注册表（这里刻意只留一层抽象，见 soup/backends/base.py 的说明）。"""
 
 from __future__ import annotations
 

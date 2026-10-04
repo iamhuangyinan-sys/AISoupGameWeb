@@ -1,14 +1,14 @@
-"""DeepSeek 直判（§3.2 的后端 B）。
+"""DeepSeek 直判（可替换的「后端 B」）。
 
 两种用途，同一份实现：
-  1. **可替换的判定后端** —— 把 JUDGE_BACKEND 改成 deepseek 就整体切换（§8.2 决策门用）
+  1. **整体替换判定后端** —— 把 JUDGE_BACKEND 改成 deepseek 就切换
   2. **二次判定** —— Jev 低置信/弃权时叫它复核（见 soup/cascade.py）
 
-§3.2 对后端 B 的要求：需 JSON 约束 + 自报置信度 —— 因为 DeepSeek 没有 Jev 那样的
-校准概率，只能让它自己报，可靠性低一档。
+对它的要求：需 JSON 约束 + 自报置信度 —— 因为 DeepSeek 没有 Jev 那样的
+校准概率，只能让它自己报，可靠性低一档（别把它自报的置信度当概率用）。
 
-成本纪律（§7.5）：
-  - 在线一律关思考模式（D12）：reasoning token 按输出计费，成本翻几倍
+成本纪律：
+  - 在线一律关思考模式：reasoning token 按输出计费，成本翻几倍
   - 固定前缀（system）放最前面、且跨汤稳定，吃缓存命中价（1/50）
 """
 
@@ -235,7 +235,7 @@ class DeepSeekDirectBackend(JudgeBackend):
             ],
             response_format={"type": "json_object"},
             max_tokens=config.DEEPSEEK_MAX_TOKENS,
-            # D12：在线一律关思考模式
+            # 在线一律关思考模式（reasoning token 按输出计费）
             extra_body={"thinking": {"type": config.DEEPSEEK_THINKING}},
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -278,7 +278,8 @@ def _to_distribution(
 
     ⚠️ 这是**有损映射**：DeepSeek 只给一个置信度，不给完整分布。
     把 (1 - confidence) 平均分给其余类别，是为了让下游的 rules.decide() 能统一处理。
-    别把它当校准概率看 —— §3.2 已经说明后端 B 的弃权依据「可靠性低一档」。
+    别把它当校准概率看 —— DeepSeek 的自报置信度可靠性低一档，这是它和 Jev 的
+    根本差别（Jev 是校准过的概率，DeepSeek 只是自己填一个数）。
 
     `allowed` 是选项集的 key（三态是 yes/no/irrelevant，选择题是 c1/c2/…/none）。
     """
@@ -290,7 +291,7 @@ def _to_distribution(
 
 
 def _read_usage(resp) -> dict:
-    """从响应里取用量，并按 §5.2 价格表折算美元（区分高低峰与缓存命中）。"""
+    """从响应里取用量，并按价格表折算美元（区分高低峰与缓存命中）。"""
     usage = resp.usage
     prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
     completion_tokens = getattr(usage, "completion_tokens", 0) or 0

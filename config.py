@@ -42,7 +42,7 @@ def _env_bool(name: str, default: bool = True) -> bool:
     return raw.lower() not in {"0", "false", "no", "off"}
 
 
-# --- Jev 的两种 transport（§3.2：唯一的抽象） ---------------------------------
+# --- Jev 的两种 transport（唯一的抽象） -----------------------------------------
 # openrouter：不用 TypeSafe 账号，OpenRouter 注册充值即可用。实测直连可达。
 #             ⚠️ 但 DeepSeek 是另一家的 key（见下面 DEEPSEEK_* ），不通用。
 # typesafe：官方直连。但必须先有 credits 才允许签发 key（无自动试用额度）。
@@ -60,7 +60,7 @@ JEV_TRANSPORTS = {
     "openrouter": {
         "label": "OpenRouter",
         "endpoint": f"{OPENROUTER_BASE_URL}/v1/systemone",
-        "model": "typesafe/jev-1.13",  # D13：固定版本号，不用 ~typesafe/jev-latest
+        "model": "typesafe/jev-1.13",  # 固定版本号，不用 ~typesafe/jev-latest
         "key_hint": "sk-or-v1-…",
         "keys_url": "https://openrouter.ai/settings/keys",
         # ⚠️ 别再写「一个 key 同时能调 Jev 和 DeepSeek」—— 不成立。
@@ -138,7 +138,7 @@ DEEPSEEK_MAX_TOKENS = int(_env_float("DEEPSEEK_MAX_TOKENS", 1024))
 # 身份按「带的 key」算，没带 key 才按 IP，所以不会让同一个 NAT 后面的人互相伤害。
 RATE_LIMIT_PER_MIN = int(_env_float("RATE_LIMIT_PER_MIN", 60))
 
-# --- 通关判定（§4.5b） ---------------------------------------------------------
+# --- 通关判定 -----------------------------------------------------------------
 # 玩家自述真相 → DeepSeek 打分，≥ 此值算通关。
 # 偏松是刻意的：玩家的措辞必然和汤底不同，判太严会让人反复重写却一直被拒，
 # 而愿意写完整猜测的人方向大概率是对的（判定细节见 soup/solver.py）。
@@ -146,21 +146,21 @@ SOLVE_PASS_SCORE = _env_float("SOLVE_PASS_SCORE", 0.75)
 # 单次猜测的字数上限（前端 textarea 也按这个限）
 SOLVE_MAX_CHARS = int(_env_float("SOLVE_MAX_CHARS", 1000))
 
-# 判定后端可替换：jev | deepseek（§8.2 决策门触发时切换）
+# 判定后端可替换：jev | deepseek（对比数据支持时切换）
 JUDGE_BACKEND = _env("JUDGE_BACKEND", "jev")
 
 # --- 判定阈值 ------------------------------------------------------------------
 # 判定层是三态：是 / 不是 / 不重要。**模型不再回答「是也不是」** ——
 # 四选一里 both 会变成挡箭牌，模型把概率摊给它，yes/no 就都软了。
 # 「是也不是」由代码从两边置信度派生：|P(是) − P(不是)| ≤ margin ⇒ 两边相当 ⇒ 是也不是。
-# 这同时把 D7（「是也不是」由代码产生）恢复了。
+# 让模型自己选 both 会被它当挡箭牌 —— 概率一摊，yes/no 就都软了。
 #
 #   max(三路) < ABSTAIN          → 弃权（模型自己也没主意）
 #   P(不重要) ≥ IRRELEVANT_MIN   → 不重要
 #   |P(是) − P(不是)| ≤ MARGIN   → 是，也不是   ← 代码派生
 #   否则                          → 是 / 不是 里概率高的那个
 #
-# 取值属 §12 第 6 项，必须用标注集扫描确定。
+# 取值必须用标注集扫描确定（见 eval/run_eval.py 的 --sweep）。
 #
 # 两锅汤的实测（同一个 margin 在两边表现完全不同 —— 这就是必须两锅一起看的理由）：
 #
@@ -181,7 +181,7 @@ JUDGE_BACKEND = _env("JUDGE_BACKEND", "jev")
 # ⚠️ 「Δ 接近 ⇒ 是也不是」和「low_confidence」在这个区间里是同一件事，不需要额外分支：
 # 布偶 上 Δ ≤ 0.10 / 0.20 / 0.30 的题分别是 1 / 5 / 8 道，**没有一道**不算 low_confidence。
 # 也就是说「Δ 小」蕴含「模型自己也没把握」，把 margin 调大就等于把这类题交给「是也不是」。
-# 三态（是 / 不是 / 不重要）→ 四态或弃权。取值由标注集扫描确定（§12 第 6 项）。
+# 三态（是 / 不是 / 不重要）→ 四态或弃权。取值由标注集扫描确定。
 #
 # 两锅汤 49 题（布偶 29 + 微笑 20）实测，配合二次判定（soften=0）：
 #     margin   只用 Jev       +复核      致命   反向致命
@@ -195,13 +195,13 @@ JUDGE_BACKEND = _env("JUDGE_BACKEND", "jev")
 JEV_BOTH_MARGIN = _env_float("JEV_BOTH_MARGIN", 0.20)
 JEV_IRRELEVANT_MIN = _env_float("JEV_IRRELEVANT_MIN", 0.50)
 JEV_ABSTAIN = _env_float("JEV_ABSTAIN", 0.45)
-# 采用了答案但这个概率偏低 → 标 low_confidence，落日志供调阈值（§4.3）
+# 采用了答案但这个概率偏低 → 标 low_confidence，落日志供调阈值
 JEV_CONFIDENT = _env_float("JEV_CONFIDENT", 0.70)
 
-# --- 二次判定（§3.2 后端 B 的第二种用法） --------------------------------------
+# --- 二次判定（后端 B 的第二种用法） --------------------------------------------
 # Jev 弃权或 low_confidence 时，叫 DeepSeek 复核（见 soup/cascade.py）。
 #
-# 这同时补上了 §3.2 一直没实现的后端 B。触发条件用 low_confidence，
+# 这同时把「可替换的后端 B」这条一直悬着的设想落地了。触发条件用 low_confidence，
 # 而不是给 Jev 另设一个更严的阈值 —— 理由：Jev 的校准概率只在「干净二选一」时可靠
 # （实测 0.98/0.04），一旦它开始动用汤底以外的知识（微笑 #7 的致命错误、
 # 「植物大战僵尸是不是策略游戏」），它的概率分布就会变得不稳定。复核正好覆盖这一类。
@@ -244,11 +244,11 @@ MAX_CHOICE_OPTIONS = int(_env("MAX_CHOICE_OPTIONS", "4"))
 JEV_CHOICE_MIN = _env_float("JEV_CHOICE_MIN", 0.50)      # 最高项低于此 → 弃权
 JEV_CHOICE_MARGIN = _env_float("JEV_CHOICE_MARGIN", 0.15)  # 与次高项的差距低于此 → 弃权
 
-# --- 按需 NLU 开关（§4.4） -----------------------------------------------------
+# --- 按需 NLU 开关 -------------------------------------------------------------
 # 拆解（NLU_DECOMPOSE）已实测证伪并移除；指代消解尚未实现。
 # 语言处理层目前有：本地正则意图识别 + 选择题斜杠语法解析，都是 0 成本。
 
-# --- 题库导入限制（§4.7） -----------------------------------------------------
+# --- 题库导入限制 -------------------------------------------------------------
 
 TRUTH_MAX_CHARS = 600  # 上限；超过仍可入库，但提醒作者压缩
 TITLE_MAX_CHARS = 60
@@ -275,7 +275,7 @@ SOUP_EXAMPLE_TXT = DATA_DIR / "soup.example.txt"
 TURN_LOG = LOG_DIR / "turns.jsonl"
 GRAY_LOG = LOG_DIR / "gray.jsonl"
 
-# --- 价格表（§5.1 / §5.2，USD / 1M token） -------------------------------------
+# --- 价格表（USD / 1M token） --------------------------------------------------
 
 USD_TO_CNY = 7.2
 

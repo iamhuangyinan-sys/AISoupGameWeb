@@ -3,19 +3,19 @@
 一次请求、一个问题：把「这个提问相对汤底属于哪一类」直接交给 Jev 判断。
 Choice 会返回全部四路的概率分布，所以不存在信息丢失。
 
-⚠️ 与文档 §4.1 的偏离（有实测数据支撑，见 soup/rules.py 顶部说明）：
-    §4.1 原设计是三个 Noul（holds / fails / relevant）再由代码组合出四态。
+⚠️ **与最初的设计不同**（有实测数据支撑，见 soup/rules.py 顶部说明）：
+    原设计是三个 Noul（holds / fails / relevant）再由代码组合出四态。
     实测该设计让「是，也不是」在逻辑上不可达 —— 单个命题的真与假互补，
     `holds ≥ 0.8 且 fails ≥ 0.8` 几乎不可能同时成立。
     两个反例（汤底：酒保拔枪但枪里没子弹）：
         「枪是真枪吗？」          → 0.72 / 0.40 → 弃权（期望「是，也不是」）
         「他打嗝，而且是因为口渴才要水吗？」 → 0.29 / 0.60 → 弃权（期望「不是」）
 
-⚠️ 与文档 §5.1 / §4.2 的偏离：模型只回答**三态**（是 / 不是 / 不重要），
-    不再提供「是也不是」选项。「是也不是」由代码从 P(是) 与 P(不是) 的
-    置信度差派生 —— 见 soup/rules.py 的 decide()。这恢复了 D7。
+另外：模型只回答**三态**（是 / 不是 / 不重要），不再提供「是也不是」选项 ——
+    「是也不是」由代码从 P(是) 与 P(不是) 的置信度差派生，见 soup/rules.py 的 decide()。
+    让模型自己选 both 会被它当挡箭牌：概率一摊，是/不是 两边都含糊。
 
-同一份代码同时适配两个 transport（§3.2）：
+同一份代码同时适配两个 transport：
   - OpenRouter：https://openrouter.ai/api/v1/systemone
   - TypeSafe  ：https://api.typesafe.ai/v1/systemone
 路径与请求体完全一致，只有 endpoint / key / model 不同 —— 见 config.py。
@@ -31,7 +31,7 @@ from soup.backends.base import JudgeBackend
 from soup.creds import Credentials
 from soup.models import CHOICE_OPTIONS, JudgeResult, Soup, Turn, VerdictDistribution
 
-# §7.5 成本纪律 2：提问文本放进 state 一次，不在 instructions 里重复
+# 成本纪律：提问文本放进 state 一次，不在 instructions 里重复
 _INSTRUCTIONS = (
     "在 `truth` 的语境下，`player_question` 这个说法属于哪一类？\n"
     "注意：如果提问里含有汤底已经确认的内容，而玩家显然只是把它当已知前提、"
@@ -40,7 +40,7 @@ _INSTRUCTIONS = (
 
 # 只有三态。**故意不给「是也不是」这个选项** —— 给了它就会变成挡箭牌，
 # 模型把概率摊进去，是/不是 两边都变得含糊。
-# 「是也不是」由 rules.decide() 从 |P(是) − P(不是)| 派生（D7）。
+# 「是也不是」由 rules.decide() 从 |P(是) − P(不是)| 派生 —— 不让模型自己选。
 _CRITERIA = {
     "yes": "汤底支持这个说法。",
     "no": "汤底否定这个说法。",
@@ -66,7 +66,7 @@ _CHOICE_INSTRUCTIONS = (
     "  - 拿不准就选 none，不要猜。"
 )
 
-_RETRY_STATUS = {429, 529}  # §5.1：429 超限流 / 529 服务过载 → 指数退避
+_RETRY_STATUS = {429, 529}  # 429 超限流 / 529 服务过载 → 指数退避
 _MAX_ATTEMPTS = 3
 
 
@@ -90,7 +90,7 @@ class JevDirectBackend(JudgeBackend):
         #    这条路处处都能溜进来 —— 现在整套删了，这里也就没必要区分 None 和 ""。
         self.api_key = api_key or ""
         self.model = model or config.JEV_MODEL
-        # §11：不要依赖系统代理，显式传 proxy（留空 = 直连）
+        # 不要依赖系统代理，显式传 proxy（留空 = 跟随系统代理，不是直连）
         proxy = proxy if proxy is not None else config.JEV_PROXY
         self._client = httpx.Client(timeout=config.JEV_TIMEOUT_S, proxy=proxy or None)
 

@@ -1,4 +1,4 @@
-"""通关判定（§4.5b）：玩家写下自己的猜测，判断是否基本还原了汤底。
+"""通关判定：玩家写下自己的猜测，判断是否基本还原了汤底。
 
 为什么交给模型而不是关键词 / 相似度匹配：海龟汤的汤底是一条**因果链**，玩家几乎
 不可能用同样的措辞复述 ——「孩子死了她接受不了，所以把自己关起来」和汤底的
@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 
 import config
 
-# 复用后端 B 的用量折算（§5.2 价格表 + 高低峰 + 缓存命中），计费逻辑只写一遍。
+# 复用后端 B 的用量折算（价格表 + 高低峰 + 缓存命中），计费逻辑只写一遍。
 # 下划线是那个模块的私有约定，同包内引用是刻意的。
 from soup.backends.deepseek_direct import _read_usage, shared_client
 from soup.creds import Credentials
